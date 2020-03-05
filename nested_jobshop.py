@@ -141,6 +141,7 @@ def MinimalJobshopSat():
 
         # Finally print the solution found.
         print('Optimal Schedule Length: %i' % solver.ObjectiveValue())
+        print('Task Format: [start, process_end, delay_end, deliver_end]')
         print(output)
 
 
