@@ -11,28 +11,60 @@ def MinimalJobshopSat():
     # Create the model.
     model = cp_model.CpModel()
 
-    jobs_data = [  # task = (machine_ids, processing_time, delay_time, deliver_time).
-        [((0, 1), 3, 1, 1),
-         ((2,), 1, 1, 1)],  # Job0
+    # The flag subsequent indicate this task should stick together with the preceeding one
+    subsequent = True
 
-        [((0, 2), 1, 0, 0), 
-         ((1,), 4, 1, 0)],  # Job1
+    # task = (machine_ids, local_time, remote_time, subsequent).
+    # machine_ids:
+    #   Machine ids this task occupies
+    #   Special ids:
+    #       0: DON'T USE IT! 0 is reserved for a special purpose to make finish times easy to show
+    #      -1: Use it for the last task if it doesn't run on a shared machine.
+    # local_time:
+    #   Time that a job must run on its local machine before occupying a shared machine
+    # remote_time:
+    #   Time that a job occupies a remote (shared) machine. Equivalent to the duration.
+    # subsequent:
+    #   Indicate if the the task should continue immediately after its preceeding task
+    #   When setting a task to subsequent, local_time is ignored.
+    #   It is recommended to explicitly set local_tim to 0 to avoid confusion.
+    jobs_data = [
+        # Job0
+        [((1, 2), 3, 1, not subsequent),
+         ((3,), 1, 1, not subsequent),
+         ((-1,), 10, 0, not subsequent)],   # final task doesn't occupy shared machine
 
-        [((1,), 4, 0, 26), 
-         ((2,), 3, 1, 0)]  # Job2
+        # Job1
+        [((1, 3), 1, 2, not subsequent),
+         ((2,), 4, 1, not subsequent),
+         ((2, 3), 0, 1, subsequent),
+         ((3,), 0, 1, subsequent)],         # 2 subsequent tasks
+
+        # Job2
+        [((1,), 4, 2, not subsequent),
+         ((2,), 3, 1, not subsequent)]      # last task runs on machine 2
     ]
+
+    # A dummy task is appended to each of the job.
+    # The 0-th machine is a special reserved one.
+    # This dummy task will happen on the 0-th machine 
+    # reserved for this special purpose to show the 
+    # finish time of each job.
+    dummy_task = ((0,), 0, 0, not subsequent)
+    for job in jobs_data:
+        job.append(dummy_task)
 
     machines_count = 1 + max(max(task[0]) for job in jobs_data for task in job)
     all_machines = range(machines_count)
 
     # Computes horizon dynamically as the sum of all durations.
-    horizon = sum(sum(task[1:]) for job in jobs_data for task in job)
+    horizon = sum(sum(task[1:-1]) for job in jobs_data for task in job)
 
     # Named tuple to store information about created variables.
-    task_type = collections.namedtuple('task_type', 'start process_end delay_end deliver_end interval')
+    task_type = collections.namedtuple('task_type', 'start end interval')
     # Named tuple to manipulate solution information.
     assigned_task_type = collections.namedtuple('assigned_task_type',
-                                                'start job index process_end delay_end deliver_end')
+                                                'start job index duration')
 
     # Creates job intervals and add to the corresponding machine lists.
     all_tasks = {}
@@ -41,19 +73,16 @@ def MinimalJobshopSat():
     for job_id, job in enumerate(jobs_data):
         for task_id, task in enumerate(job):
             occup_machines = task[0]
-            duration = task[1] + task[2]    # processing + delay
+            duration = task[2]    # remote time
             suffix = '_%i_%i' % (job_id, task_id)
             start_var = model.NewIntVar(0, horizon, 'start' + suffix)
-            process_var = model.NewIntVar(0, horizon, 'process_end' + suffix)
-            delay_var = model.NewIntVar(0, horizon, 'delay_end' + suffix)
-            deliver_var = model.NewIntVar(0, horizon, 'deliver_end' + suffix)
+            end_var = model.NewIntVar(0, horizon, 'end' + suffix)
 
-            # Each interval includes its processing + delay
-            interval_var = model.NewIntervalVar(start_var, duration, delay_var,
+            interval_var = model.NewIntervalVar(start_var, duration, end_var,
                                                 'interval' + suffix)
             all_tasks[job_id, task_id] = task_type(
-                start=start_var, process_end=process_var, delay_end=delay_var, deliver_end=deliver_var, interval=interval_var)
-            
+                start=start_var, end=end_var, interval=interval_var)
+
             for machine in occup_machines:
                 machine_to_intervals[machine].append(interval_var)
 
@@ -61,32 +90,27 @@ def MinimalJobshopSat():
     for machine in all_machines:
         model.AddNoOverlap(machine_to_intervals[machine])
 
-    # Set delay constraints
+    # Precedences inside a job (plus a local_time that it must wait for)
     for job_id, job in enumerate(jobs_data):
-        for task_id in range(len(job)):
-            # A task must wait for its preceeding task to finish and deliver
-            delay_time = job[task_id][2]
-            model.Add(all_tasks[job_id, task_id].delay_end == all_tasks[job_id, task_id].process_end + delay_time)
-
-    # Set deliver constraints
-    for job_id, job in enumerate(jobs_data):
-        for task_id in range(len(job)):
-            # A task must wait for its preceeding task to finish and deliver
-            deliver_time = job[task_id][3]
-            model.Add(all_tasks[job_id, task_id].deliver_end == all_tasks[job_id, task_id].delay_end + deliver_time)
-
-    # Precedences inside a job
-    for job_id, job in enumerate(jobs_data):
-        for task_id in range(len(job) - 1):
-            # A task must wait for its preceeding task to finish and deliver
-            deliver_time = job[task_id][3]
-            model.Add(all_tasks[job_id, task_id + 1].start >= all_tasks[job_id, task_id].deliver_end)
+        # The first task should wait for its preceeding local time first
+        first_local_time = job[0][1]
+        model.Add(all_tasks[job_id, 0].start >= first_local_time)
+        # For the rest of the tasks
+        for task_id in range(len(job)-1):
+            if job[task_id + 1][3]: # check the subsequent flag
+                # A subsequent task continues after immediately its preceeding task to finish and deliver
+                model.Add(all_tasks[job_id, task_id + 1].start ==
+                          all_tasks[job_id, task_id].end)
+            else:
+                # A non-subsequent task must at least wait for its preceeding task plus its preceeding local_time
+                local_time = job[task_id + 1][1]
+                model.Add(all_tasks[job_id, task_id + 1].start >=
+                          all_tasks[job_id, task_id].end + local_time)
 
     # Makespan objective.
-    # The Makespan includes deliver time
     obj_var = model.NewIntVar(0, horizon, 'makespan')
     model.AddMaxEquality(obj_var, [
-        all_tasks[job_id, len(job) - 1].deliver_end
+        all_tasks[job_id, len(job) - 1].end
         for job_id, job in enumerate(jobs_data)
     ])
     model.Minimize(obj_var)
@@ -104,16 +128,39 @@ def MinimalJobshopSat():
                 for machine in occup_machines:
                     assigned_jobs[machine].append(
                         assigned_task_type(
-                            start=solver.Value(all_tasks[job_id, task_id].start),
+                            start=solver.Value(
+                                all_tasks[job_id, task_id].start),
                             job=job_id,
                             index=task_id,
-                            process_end=solver.Value(all_tasks[job_id, task_id].process_end),
-                            delay_end=solver.Value(all_tasks[job_id, task_id].delay_end),
-                            deliver_end=solver.Value(all_tasks[job_id, task_id].deliver_end))                            )
+                            duration=task[2]))
 
         # Create per machine output lines.
         output = ''
-        for machine in all_machines:
+
+        # Show finish times using the special 0-th machine
+        assigned_jobs[0].sort()
+        sol_line_tasks = 'Finish Time: '
+        sol_line = '             '
+
+        for assigned_task in assigned_jobs[machine]:
+            name = 'job_%i' % (assigned_task.job)
+            # Add spaces to output to align columns.
+            sol_line_tasks += '%-10s' % name
+
+            finish_time = assigned_task.start
+
+            # Format for each job's finish time: 
+            sol_tmp = '%i' % finish_time
+            # Add spaces to output to align columns.
+            sol_line += '%-10s' % sol_tmp
+        
+        sol_line += '\n'
+        sol_line_tasks += '\n'
+        output += sol_line_tasks
+        output += sol_line
+
+        # Show info of real machines
+        for machine in all_machines[1:]:
             # Sort by starting time.
             assigned_jobs[machine].sort()
             sol_line_tasks = 'Machine ' + str(machine) + ': '
@@ -125,12 +172,10 @@ def MinimalJobshopSat():
                 sol_line_tasks += '%-10s' % name
 
                 start = assigned_task.start
-                process_end = assigned_task.process_end
-                delay_end = assigned_task.delay_end
-                deliver_end = assigned_task.deliver_end
+                duration = assigned_task.duration
 
-                # Format for each task: [start, process_end, delay_end, deliver_end]
-                sol_tmp = '[%i,%i,%i,%i]' % (start, process_end, delay_end, deliver_end)
+                # Format for each task: [start, end]
+                sol_tmp = '[%i,%i]' % (start, start+duration)
                 # Add spaces to output to align columns.
                 sol_line += '%-10s' % sol_tmp
 
@@ -141,7 +186,7 @@ def MinimalJobshopSat():
 
         # Finally print the solution found.
         print('Optimal Schedule Length: %i' % solver.ObjectiveValue())
-        print('Task Format: [start, process_end, delay_end, deliver_end]')
+        print('Task Format: [start, end]')
         print(output)
 
 
