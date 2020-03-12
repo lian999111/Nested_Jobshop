@@ -16,7 +16,7 @@ def MinimalJobshopSat():
 
     # task = (machine_ids, local_time, remote_time, subsequent).
     # machine_ids:
-    #   Machine ids this task occupies
+    #   machine_ids this task occupies
     #   Special ids:
     #       0: DON'T USE IT! 0 is reserved for a special purpose to make finish times easy to show
     #      -1: Use it for the last task if it doesn't run on a shared machine.
@@ -45,10 +45,10 @@ def MinimalJobshopSat():
          ((2,), 3, 1, not subsequent)]      # last task runs on machine 2
     ]
 
-    # A dummy task is appended to each of the job.
+    # A dummy task is appended to each of the jobs.
     # The 0-th machine is a special reserved one.
     # This dummy task will happen on the 0-th machine 
-    # reserved for this special purpose to show the 
+    # reserved for the special purpose to show the 
     # finish time of each job.
     dummy_task = ((0,), 0, 0, not subsequent)
     for job in jobs_data:
