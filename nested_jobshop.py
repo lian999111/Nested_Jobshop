@@ -84,7 +84,10 @@ def MinimalJobshopSat():
                 start=start_var, end=end_var, interval=interval_var)
 
             for machine in occup_machines:
-                machine_to_intervals[machine].append(interval_var)
+                # Only add intervals to real machines
+                # Not necessary to take special care here, just for logical correctness
+                if machine > 0:
+                    machine_to_intervals[machine].append(interval_var)
 
     # Create and add disjunctive constraints.
     for machine in all_machines:
