@@ -16,10 +16,12 @@ def MinimalJobshopSat():
 
     # task = (machine_ids, local_time, remote_time, subsequent).
     # machine_ids:
-    #   machine_ids this task occupies
+    #   Tuple of machine Ids the task occupies
     #   Special ids:
-    #       0: DON'T USE IT! 0 is reserved for a special purpose to make finish times easy to show
-    #      -1: Use it for the last task if it doesn't run on a shared machine.
+    #       0: DON'T USE IT! 0 is reserved for a special purpose to make finish times easy to show.
+    #      -1: Use it for tasks that don't run on a shared machine.
+    #          When id is set to -1, remote_time is ignored.
+    #          It is recommended to explicitly set remote_time to 0 to avoid confusion.
     # local_time:
     #   Time that a job must run on its local machine before occupying a shared machine
     # remote_time:
@@ -42,6 +44,7 @@ def MinimalJobshopSat():
 
         # Job2
         [((1,), 4, 2, not subsequent),
+         ((-1,), 3, 0, not subsequent),
          ((2,), 3, 1, not subsequent)]      # last task runs on machine 2
     ]
 
@@ -73,7 +76,13 @@ def MinimalJobshopSat():
     for job_id, job in enumerate(jobs_data):
         for task_id, task in enumerate(job):
             occup_machines = task[0]
-            duration = task[2]    # remote time
+
+            if occup_machines[0] > 0:
+                duration = task[2]    # remote time
+            else:
+                # If the machine id is -1, any set remote time is ignore
+                duration = 0
+
             suffix = '_%i_%i' % (job_id, task_id)
             start_var = model.NewIntVar(0, horizon, 'start' + suffix)
             end_var = model.NewIntVar(0, horizon, 'end' + suffix)
