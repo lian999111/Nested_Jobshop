@@ -76,6 +76,8 @@ def MinimalJobshopSat():
     for job_id, job in enumerate(jobs_data):
         for task_id, task in enumerate(job):
             occup_machines = task[0]
+            
+            assert min(occup_machines) >= -1, 'Machine id must be >= -1'
 
             if occup_machines[0] > 0:
                 duration = task[2]    # remote time
