@@ -12,9 +12,9 @@ def MinimalJobshopSat():
     model = cp_model.CpModel()
 
     # The flag subsequent indicate this task should stick together with the preceeding one
-    subsequent = True
+    consecutive = True
 
-    # task = (machine_ids, local_time, remote_time, subsequent).
+    # task = (machine_ids, local_time, remote_time, consecutive).
     # machine_ids:
     #   Tuple of machine Ids the task occupies
     #   Special ids:
@@ -26,26 +26,25 @@ def MinimalJobshopSat():
     #   Time that a job must run on its local machine before occupying a shared machine
     # remote_time:
     #   Time that a job occupies a remote (shared) machine. Equivalent to the duration.
-    # subsequent:
+    # consecutive:
     #   Indicate if the the task should continue immediately after its preceeding task
-    #   When setting a task to subsequent, local_time is ignored.
+    #   When setting a task to consecutive, local_time is ignored.
     #   It is recommended to explicitly set local_tim to 0 to avoid confusion.
     jobs_data = [
         # Job0
-        [((1, 2), 3, 1, not subsequent),
-         ((3,), 1, 1, not subsequent),
-         ((-1,), 10, 0, not subsequent)],   # final task doesn't occupy shared machine
+        [((1, 2), 3, 1, not consecutive),
+         ((3,), 1, 1, not consecutive),
+         ((-1,), 10, 0, not consecutive)],   # final task doesn't occupy shared machine
 
         # Job1
-        [((1, 3), 1, 2, not subsequent),
-         ((2,), 4, 1, not subsequent),
-         ((2, 3), 0, 1, subsequent),
-         ((3,), 0, 1, subsequent)],         # 2 subsequent tasks
+        [((1, 3), 1, 2, not consecutive),
+         ((2,), 4, 1, not consecutive),
+         ((2, 3), 0, 1, consecutive),
+         ((3,), 0, 1, consecutive)],         # 2 consecutive tasks
 
         # Job2
-        [((1,), 4, 2, not subsequent),
-         ((-1,), 3, 0, not subsequent),
-         ((2,), 3, 1, not subsequent)]      # last task runs on machine 2
+        [((1,), 4, 2, not consecutive),
+         ((2,), 3, 1, not consecutive)]      # last task runs on machine 2
     ]
 
     # A dummy task is appended to each of the jobs.
@@ -53,7 +52,7 @@ def MinimalJobshopSat():
     # This dummy task will happen on the 0-th machine 
     # reserved for the special purpose to show the 
     # finish time of each job.
-    dummy_task = ((0,), 0, 0, not subsequent)
+    dummy_task = ((0,), 0, 0, not consecutive)
     for job in jobs_data:
         job.append(dummy_task)
 
