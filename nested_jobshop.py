@@ -155,7 +155,7 @@ def MinimalJobshopSat():
         sol_line_tasks = 'Finish Time: '
         sol_line = '             '
 
-        for assigned_task in assigned_jobs[machine]:
+        for assigned_task in assigned_jobs[0]:
             name = 'job_%i' % (assigned_task.job)
             # Add spaces to output to align columns.
             sol_line_tasks += '%-10s' % name
